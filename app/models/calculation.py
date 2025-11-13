@@ -54,3 +54,45 @@ class Calculation(Base, ABC):
 class Addition(Calculation):
     __mapper_args__ = {'polymorphic_identity': 'addition'}
     
+    def get_result(self) -> float:
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        return sum(self.inputs)
+    
+
+class Subtraction(Calculation):
+    __mapper_args__ = {'polymorphic_identity': 'subtraction'}
+    
+    def get_result(self) -> float:
+        if not isinstance(self.inputs, list) or len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list of at least two numbers.")
+        result = self.inputs[0]
+        for num in self.inputs[1:]:
+            result -= num
+        return result
+    
+
+class Multiplication(Calculation):
+    __mapper_args__ = {'polymorphic_identity': 'multiplication'}
+    
+    def get_result(self) -> float:
+        if not isinstance(self.inputs, list):
+            raise ValueError("Multiplication inputs must be a list of numbers.")
+        result = 1
+        for num in self.inputs:
+            result *= num
+        return result
+    
+
+class Division(Calculation):
+    __mapper_args__ = {'polymorphic_identity': 'division'}
+    
+    def get_result(self) -> float:
+        if not isinstance(self.inputs, list) or len(self.inputs) < 2:
+            raise ValueError("Division inputs must be a list of at least two numbers.")
+        result = self.inputs[0]
+        for num in self.inputs[1:]:
+            if num == 0:
+                raise ValueError("Division by zero is not allowed.")
+            result /= num
+        return result
