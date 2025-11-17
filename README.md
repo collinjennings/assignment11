@@ -2,10 +2,16 @@
 
 This repository is a dockerized web calculator application, which uses SQLAlchemy and Pydantic to validate new users and add them to a Postgres database. The application also includes comprehensive testing for the calculator operations as well as for managing and validating the addition of new users to the database. 
 
-The application includes docker containers for connecting to a postgres database server, accessing the pgAdmin dashboard, and running the application with all of its dependencies. You can view the DockerHub repository below. 
+This version of the application includes a `Calculation` model and schema that uses the Factory design pattern to instantiate different calculation types that are stored in the postgres database with the user fields. The `create` method of the `Calculation` class in instantiated as an abstract method and then each calculation type is a subclass of that method. 
 
-DockerHub Repository: https://hub.docker.com/repository/docker/collinjennings/assignment9/general
+Additionally, the application includes comprehensive testing for the integration of the different database models and unit testing for the different calculation types. 
 
+The application has docker containers for connecting to a postgres database server, accessing the pgAdmin dashboard, and running the application with all of its dependencies. You can view the DockerHub repository below. 
+
+DockerHub Repository: https://hub.docker.com/repository/docker/collinjennings/assignment11/general
+
+
+---
 
 # 📦 Project Setup
 
