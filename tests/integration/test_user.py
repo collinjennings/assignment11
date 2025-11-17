@@ -51,14 +51,19 @@ def test_managed_session():
 # Session Handling & Partial Commits
 # ======================================================================================
 
-def test_session_handling(db_session):
+def test_session_handling(db_session_real_commits):
     """
     Demonstrate partial commits:
-      - user1 is committed
-      - user2 fails (duplicate email), triggers rollback, user1 remains
-      - user3 is committed
-      - final check ensures we only have user1 and user3
+    - user1 is committed
+    - user2 fails (duplicate email), triggers rollback, user1 remains
+     - user3 is committed
+    - final check ensures we only have user1 and user3
+    
+    Note: This test uses db_session_real_commits because it needs to verify
+    that data persists across commits within the same test.
     """
+    db_session = db_session_real_commits  # Alias for readability
+    
     initial_count = db_session.query(User).count()
     logger.info(f"Initial user count before test_session_handling: {initial_count}")
     assert initial_count == 0, f"Expected 0 users before test, found {initial_count}"
@@ -68,7 +73,7 @@ def test_session_handling(db_session):
         last_name="User",
         email="test1@example.com",
         username="testuser1",
-        password="password123"
+        password=User.hash_password("password123")  # Hash the password
     )
     db_session.add(user1)
     db_session.commit()
@@ -84,7 +89,7 @@ def test_session_handling(db_session):
             last_name="User",
             email="test1@example.com",  # Duplicate
             username="testuser2",
-            password="password456"
+            password=User.hash_password("password456")
         )
         db_session.add(user2)
         db_session.commit()
@@ -102,7 +107,7 @@ def test_session_handling(db_session):
         last_name="User",
         email="test3@example.com",
         username="testuser3",
-        password="password789"
+        password=User.hash_password("password789")
     )
     db_session.add(user3)
     db_session.commit()
@@ -287,18 +292,20 @@ def test_unique_username_constraint(db_session):
 # Persistence after Constraint Violation
 # ======================================================================================
 
-def test_user_persistence_after_constraint(db_session):
+def test_user_persistence_after_constraint(db_session_real_commits):
     """
     - Create and commit a valid user
     - Attempt to create a duplicate user (same email) -> fails
     - Confirm the original user still exists
     """
+    db_session = db_session_real_commits  # Alias for readability
+    
     initial_user_data = {
         "first_name": "First",
         "last_name": "User",
         "email": "first@example.com",
         "username": "firstuser",
-        "password": "password123"
+        "password": User.hash_password("password123")  # Hash password
     }
     initial_user = User(**initial_user_data)
     db_session.add(initial_user)
@@ -311,7 +318,7 @@ def test_user_persistence_after_constraint(db_session):
             last_name="User",
             email="first@example.com",  # Duplicate
             username="seconduser",
-            password="password456"
+            password=User.hash_password("password456")
         )
         db_session.add(duplicate_user)
         db_session.commit()

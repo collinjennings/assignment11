@@ -99,8 +99,8 @@ jobs:
         with:
           push: true
           tags: |
-            collinjennings/assignment10:latest
-            collinjennings/assignment10:${{ github.sha }}
+            collinjennings/assignment11:latest
+            collinjennings/assignment11:${{ github.sha }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=registry,ref=kaw393939/601_module9:cache
           cache-to: type=inline,mode=max

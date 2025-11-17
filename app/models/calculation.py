@@ -15,8 +15,6 @@ from app.database import Base  # Import the EXISTING Base
 # Create a combined metaclass
 class CombinedMeta(DeclarativeMeta, ABCMeta):
     pass
-
-# Use the combined metaclass with your existing Base
 class Calculation(Base, metaclass=CombinedMeta):
     __tablename__ = 'calculations'
 

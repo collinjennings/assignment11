@@ -169,16 +169,28 @@ def db_session(request) -> Generator[Session, None, None]:
                         cleanup_conn.execute(table.delete())
         logger.info("db_session teardown: done.")
 
-# Remove the cleanup_after_test fixture - it's redundant and causes conflicts
-# @pytest.fixture(scope="function", autouse=True)
-# def cleanup_after_test(db_session):
-#     """Automatically cleanup after each test."""
-#     yield
-#     try:
-#         db_session.rollback()
-#     except:
-#         pass
-
+@pytest.fixture
+def db_session_real_commits(request) -> Generator[Session, None, None]:
+    """
+    Provide a database session that actually commits to the database.
+    Use this for tests that need to verify persistence across commits.
+    Cleans up by deleting all data after the test.
+    """
+    session = TestingSessionLocal()
+    
+    try:
+        yield session
+    finally:
+        logger.info("db_session_real_commits teardown: cleaning up data.")
+        # Clean up all data created during the test
+        preserve_db = request.config.getoption("--preserve-db")
+        if not preserve_db:
+            for table in reversed(Base.metadata.sorted_tables):
+                session.execute(table.delete())
+            session.commit()
+        session.close()
+        logger.info("db_session_real_commits teardown: done.")
+        
 # ======================================================================================
 # Test Data Fixtures
 # ======================================================================================
