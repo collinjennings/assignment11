@@ -10,12 +10,13 @@ import pytest
 import requests
 from faker import Faker
 from playwright.sync_api import sync_playwright, Browser, Page
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event  
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 from app.database import Base, get_engine, get_sessionmaker
 from app.models.user import User
+from app.models.calculation import Calculation, Addition, Subtraction, Multiplication, Division
 from app.config import settings
 from app.database_init import init_db, drop_db
 
@@ -53,7 +54,7 @@ def create_fake_user() -> Dict[str, str]:
     return {
         "first_name": fake.first_name(),
         "last_name": fake.last_name(),
-        "email": fake.unique.email(),  # Ensure uniqueness where necessary
+        "email": fake.unique.email(),
         "username": fake.unique.user_name(),
         "password": fake.password(length=12)
     }
@@ -139,26 +140,44 @@ def setup_test_database(request):
 @pytest.fixture
 def db_session(request) -> Generator[Session, None, None]:
     """
-    Provide a test-scoped database session.
-    By default, truncates all tables after each test to ensure isolation,
-    unless --preserve-db is passed.
+    Provide a test-scoped database session with proper transaction isolation.
+    Uses nested transactions to ensure complete rollback after each test.
     """
-    session = TestingSessionLocal()
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection)()
+    
     try:
         yield session
+    except Exception as e:
+        logger.error(f"Exception in test: {e}")
+        session.rollback()
+        raise
     finally:
-        logger.info("db_session teardown: about to truncate tables.")
-        preserve_db = request.config.getoption("--preserve-db")
-        if preserve_db:
-            logger.info("Skipping table truncation due to --preserve-db flag.")
-        else:
-            logger.info("Truncating all tables now.")
-            for table in reversed(Base.metadata.sorted_tables):
-                logger.info(f"Truncating table: {table}")
-                session.execute(table.delete())
-            session.commit()
+        logger.info("db_session teardown: rolling back transaction.")
         session.close()
+        transaction.rollback()
+        connection.close()
+        
+        # Only truncate if not preserving DB
+        preserve_db = request.config.getoption("--preserve-db")
+        if not preserve_db:
+            # Truncate tables using a fresh connection for cleanup
+            with test_engine.connect() as cleanup_conn:
+                with cleanup_conn.begin():
+                    for table in reversed(Base.metadata.sorted_tables):
+                        cleanup_conn.execute(table.delete())
         logger.info("db_session teardown: done.")
+
+# Remove the cleanup_after_test fixture - it's redundant and causes conflicts
+# @pytest.fixture(scope="function", autouse=True)
+# def cleanup_after_test(db_session):
+#     """Automatically cleanup after each test."""
+#     yield
+#     try:
+#         db_session.rollback()
+#     except:
+#         pass
 
 # ======================================================================================
 # Test Data Fixtures
@@ -173,8 +192,15 @@ def test_user(db_session: Session) -> User:
     """
     Create and return a single test user.
     """
+    import uuid
     user_data = create_fake_user()
-    user = User(**user_data)
+    user = User(
+        first_name=user_data['first_name'],
+        last_name=user_data['last_name'],
+        email=user_data['email'],
+        username=user_data['username'],
+        password=User.hash_password(user_data['password'])
+    )
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
@@ -199,7 +225,13 @@ def seed_users(db_session: Session, request) -> List[User]:
     users = []
     for _ in range(num_users):
         user_data = create_fake_user()
-        user = User(**user_data)
+        user = User(
+            first_name=user_data['first_name'],
+            last_name=user_data['last_name'],
+            email=user_data['email'],
+            username=user_data['username'],
+            password=User.hash_password(user_data['password'])
+        )
         users.append(user)
         db_session.add(user)
 
@@ -310,38 +342,32 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
-
-# ======================================================================================
-# How to Use This File
-# ======================================================================================
-"""
-Basic Examples:
-
-1. Test DB operations:
-   def test_create_user(db_session):
-       user = User(username="test", email="test@example.com")
-       db_session.add(user)
-       db_session.commit()
-
-2. Using fake data:
-   def test_with_fake_data(fake_user_data):
-       user = User(**fake_user_data)
-       # proceed with test logic...
-
-3. Working with a test user:
-   def test_user_update(test_user):
-       test_user.username = "new_username"
-       # test logic...
-
-4. Testing with multiple users:
-   @pytest.mark.parametrize('seed_users', [10], indirect=True)
-   def test_user_list(seed_users):
-       # seed_users contains 10 test users
-       assert len(seed_users) == 10
-
-Command Examples:
-- Basic run: pytest
-- Keep database afterward (skip table truncation & drop): pytest --preserve-db
-- Include slow tests: pytest --run-slow
-- Show output: pytest -v -s
-"""
+                
+@pytest.fixture
+def db_session_with_savepoint(request) -> Generator[Session, None, None]:
+    """
+    Provide a database session with automatic savepoint handling.
+    Use this for tests that expect database errors.
+    """
+    from sqlalchemy import event
+    
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection)()
+    
+    # Create a savepoint
+    session.begin_nested()
+    
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(sess, trans):
+        """Automatically restart savepoint after rollback."""
+        if trans.nested and not trans._parent.nested:
+            sess.expire_all()
+            sess.begin_nested()
+    
+    try:
+        yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
