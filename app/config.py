@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/fastapi_db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@127.0.0.1:5432/fastapi_db"
     
     class Config:
         env_file = ".env"
